@@ -1,0 +1,42 @@
+---
+- name: Add some rules at the end of minifirewall file
+  template:
+    src: "{{ item }}"
+    dest: /etc/default/minifirewall.tail
+    force: yes
+  with_first_found:
+  - "templates/minifirewall-tail/minifirewall.{{ inventory_hostname }}.tail.j2"
+  - "templates/minifirewall-tail/minifirewall.{{ host_group }}.tail.j2"
+  - "templates/minifirewall-tail/minifirewall.default.tail.j2"
+  - "minifirewall.default.tail.j2"
+  register: minifirewall_tail_template
+
+- debug:
+    var: minifirewall_tail_template
+    verbosity: 1
+
+- name: source minifirewall.tail at the end of the main file
+  blockinfile:
+    dest: /etc/default/minifirewall
+    marker: "# {mark} ANSIBLE MANAGED EXTERNAL RULES"
+    block: . /etc/default/minifirewall.tail
+    insertbefore: EOF
+  register: minifirewall_tail_source
+
+- debug:
+    var: minifirewall_tail_source
+    verbosity: 1
+
+- name: restart minifirewall
+  # service:
+  #   name: minifirewall
+  #   state: restarted
+  command: /etc/init.d/minifirewall restart
+  register: minifirewall_init_restart
+  failed_when: "'starting IPTables rules is now finish : OK' not in minifirewall_init_restart.stdout"
+  changed_when: "'starting IPTables rules is now finish : OK' in minifirewall_init_restart.stdout"
+  when: minifirewall_tail_template | changed
+
+- debug:
+    var: minifirewall_init_restart
+    verbosity: 1
